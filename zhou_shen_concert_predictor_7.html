@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>周深演唱会票房预测模型</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f5f7; color: #1d1d1f; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 2rem; }
+  .card { background: #fff; border-radius: 16px; box-shadow: 0 4px 24px rgba(0,0,0,0.08); max-width: 660px; width: 100%; padding: 2rem; }
+  h1 { font-size: 20px; font-weight: 600; margin-bottom: 4px; }
+  .sub { font-size: 12px; color: #6e6e73; margin-bottom: 1.5rem; line-height: 1.7; }
+  .section-label { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #6e6e73; margin: 1.25rem 0 0.75rem; }
+  .ctrl { display: flex; align-items: center; gap: 12px; margin-bottom: 0.75rem; }
+  .ctrl label { font-size: 13px; color: #3a3a3c; min-width: 72px; }
+  .ctrl select { flex: 1; font-size: 13px; padding: 6px 10px; border: 1px solid #d2d2d7; border-radius: 8px; background: #f5f5f7; color: #1d1d1f; outline: none; }
+  .ctrl select:focus { border-color: #0071e3; }
+  .ctrl input[type=range] { flex: 1; accent-color: #0071e3; cursor: pointer; }
+  .ctrl .val { font-size: 13px; font-weight: 600; min-width: 68px; text-align: right; color: #1d1d1f; }
+  .cap-hint { font-size: 11px; color: #0071e3; margin: -4px 0 10px 84px; }
+  .price-zone { font-size: 11px; margin: -4px 0 10px 84px; font-weight: 500; }
+  .divider { border: none; border-top: 1px solid #f0f0f0; margin: 1.25rem 0; }
+  .mgrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1rem; }
+  .metric { background: #f5f5f7; border-radius: 10px; padding: 0.9rem; }
+  .metric .ml { font-size: 11px; color: #6e6e73; margin-bottom: 4px; }
+  .metric .mv { font-size: 22px; font-weight: 600; color: #1d1d1f; }
+  .metric .ms { font-size: 11px; color: #6e6e73; margin-top: 2px; }
+  .verdict { padding: 10px 14px; border-radius: 10px; font-size: 13px; margin-bottom: 1rem; font-weight: 500; }
+  .cliff { display: none; padding: 8px 12px; border-radius: 8px; font-size: 12px; margin-bottom: 0.75rem; background: #fff3e0; color: #e65100; border: 1px solid #ffcc80; }
+  table { width: 100%; font-size: 13px; border-collapse: collapse; }
+  th { text-align: left; padding: 6px 8px; font-weight: 500; color: #6e6e73; border-bottom: 1px solid #f0f0f0; font-size: 12px; }
+  th:not(:first-child) { text-align: right; }
+  td { padding: 7px 8px; border-bottom: 1px solid #f5f5f7; color: #1d1d1f; }
+  td:not(:first-child) { text-align: right; }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 500; }
+  .note { font-size: 11px; color: #aeaeb2; margin-top: 0.75rem; line-height: 1.6; }
+  .highlight-row { background: #f0f9eb; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>周深演唱会票房预测</h1>
+  <p class="sub">
+    公式：上座率 = 票价基准上座率（查表插值）× 城市系数 × 场馆系数 × 容量系数<br>
+    城市系数 = 城市历史均值 ÷ 0.650；场馆系数 = 场馆历史均值 ÷ 0.650；容量系数 = 1 − 0.0000018×(容量−16210)<br>
+    票价基准上座率来自材料图3真实数据，区间内线性插值
+  </p>
+
+  <div class="section-label">演出参数</div>
+
+  <div class="ctrl">
+    <label>城市</label>
+    <select id="city">
+      <option value="1.0913">昆明（历史均值70.9%）</option>
+      <option value="1.0452">长春（历史均值67.9%）</option>
+      <option value="1.0358">长沙（历史均值67.3%）</option>
+      <option value="1.0291">厦门（历史均值66.9%）</option>
+      <option value="1.0203">银川（历史均值66.3%）</option>
+      <option value="1.0197">呼和浩特（历史均值66.3%）</option>
+      <option value="1.0000" selected>其他城市（基准65.0%）</option>
+    </select>
+  </div>
+
+  <div class="ctrl">
+    <label>场馆类型</label>
+    <select id="vtype">
+      <option value="1.0000" selected>体育馆（均值65.0%）</option>
+      <option value="0.9200">体育场（均值59.8%）</option>
+      <option value="1.0231">演艺中心（均值66.5%）</option>
+    </select>
+  </div>
+
+  <div class="ctrl">
+    <label>票价上限</label>
+    <input type="range" id="price" min="59" max="340" step="1" value="270">
+    <span class="val" id="pv">¥270</span>
+  </div>
+  <div class="price-zone" id="price-zone"></div>
+
+  <div class="ctrl">
+    <label>场馆容量</label>
+    <input type="range" id="cap" min="15000" max="17000" step="100" value="16210">
+    <span class="val" id="cv">16,210人</span>
+  </div>
+  <div class="cap-hint" id="cap-hint">体育馆范围：15,000 – 17,000人（均值16,210）</div>
+
+  <div class="cliff" id="cliff">⚠ 票价超过 ¥300 — 触发拐点，基准上座率跌至62.1%（材料4.2.3节）</div>
+
+  <hr class="divider">
+  <div class="section-label">预测结果</div>
+
+  <div class="mgrid">
+    <div class="metric"><div class="ml">预测上座率</div><div class="mv" id="occ">—</div><div class="ms" id="occ-s"></div></div>
+    <div class="metric"><div class="ml">预计入场人数</div><div class="mv" id="att">—</div><div class="ms">人</div></div>
+    <div class="metric"><div class="ml">预估票房收入</div><div class="mv" id="rev">—</div><div class="ms">万元</div></div>
+  </div>
+
+  <div class="verdict" id="verdict"></div>
+
+  <hr class="divider">
+  <div class="section-label">票价区间基准上座率（材料图3真实数据）</div>
+
+  <table id="price-table">
+    <thead>
+      <tr>
+        <th>价格区间</th>
+        <th>场次数</th>
+        <th>基准上座率</th>
+        <th>平均收入估算</th>
+        <th>环比收入变化</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr id="row-0"><td>¥59–100</td><td>132</td><td>65.90%</td><td>¥68万</td><td>—</td></tr>
+      <tr id="row-1"><td>¥101–150</td><td>132</td><td>65.50%</td><td>¥99万</td><td>+44.9%</td></tr>
+      <tr id="row-2"><td>¥151–200</td><td>165</td><td>63.70%</td><td>¥134万</td><td>+35.2%</td></tr>
+      <tr id="row-3"><td>¥201–250</td><td>150</td><td>64.00%</td><td>¥161万</td><td>+20.1%</td></tr>
+      <tr id="row-4"><td>¥251–300</td><td>84</td><td>64.40%</td><td>¥205万</td><td>+27.3%</td></tr>
+      <tr id="row-5" style="color:#c62828"><td>¥301+</td><td>27</td><td>62.10%</td><td>¥184万</td><td>−9.9%</td></tr>
+    </tbody>
+  </table>
+
+  <p class="note">
+    收入估算 = 入场人数 × (票价上限 + 49) / 2（材料公式）。
+    票价基准上座率在区间内线性插值，城市/场馆系数乘法叠加，容量系数 = 1 − 0.0000018×(容量−16,210)。
+  </p>
+</div>
+
+<script>
+// ── 票价区间查表（来自材料图3真实数据，阶梯均值）───────────
+
+function getPriceOcc(price) {
+  // 阶梯查表，区间内上座率一致（来自材料图3区间均值）
+  if (price <= 100) return 0.6590;
+  if (price <= 150) return 0.6550;
+  if (price <= 200) return 0.6370;
+  if (price <= 250) return 0.6400;
+  if (price <= 300) return 0.6440;
+  return 0.6210;  // ¥301+
+}
+
+function getZoneIndex(price) {
+  if (price <= 100) return 0;
+  if (price <= 150) return 1;
+  if (price <= 200) return 2;
+  if (price <= 250) return 3;
+  if (price <= 300) return 4;
+  return 5;
+}
+
+// ── 场馆容量范围配置 ─────────────────────────────────────
+const VENUE_CAP = {
+  "1.0000": { min: 15000, max: 17000, def: 16210, step: 100,  label: "体育馆范围：15,000 – 17,000人（均值16,210）" },
+  "0.9200": { min: 40000, max: 60000, def: 48351, step: 500,  label: "体育场范围：40,000 – 60,000人（均值48,351）" },
+  "1.0231": { min: 4000,  max: 7000,  def: 5224,  step: 100,  label: "演艺中心范围：4,000 – 7,000人（均值5,224）" },
+};
+
+const BASE_CAP  = 16210;
+const coefCap   = -0.0000018;
+
+function predict(cityMult, vtypeMult, price, cap) {
+  const priceOcc  = getPriceOcc(price);           // 票价基准上座率（查表）
+  const capFactor = 1 + coefCap * (cap - BASE_CAP); // 容量系数
+  let occ = priceOcc * cityMult * vtypeMult * capFactor;
+  return Math.max(0.30, Math.min(0.95, occ));
+}
+
+function revWan(cap, occ, price) {
+  return (cap * occ * (price + 49) / 2 / 10000).toFixed(1);
+}
+
+// 场馆类型切换 → 容量滑块联动
+document.getElementById('vtype').addEventListener('change', function () {
+  const cfg = VENUE_CAP[this.value];
+  const slider = document.getElementById('cap');
+  slider.min   = cfg.min;
+  slider.max   = cfg.max;
+  slider.value = cfg.def;
+  slider.step  = cfg.step;
+  document.getElementById('cv').textContent       = cfg.def.toLocaleString() + '人';
+  document.getElementById('cap-hint').textContent = cfg.label;
+  update();
+});
+
+const ZONE_LABELS = ['¥59–100','¥101–150','¥151–200','¥201–250','¥251–300','¥301+'];
+const ZONE_COLORS = ['#6e6e73','#6e6e73','#6e6e73','#0071e3','#2e7d32','#c62828'];
+
+function update() {
+  const cm    = +document.getElementById('city').value;
+  const vm    = +document.getElementById('vtype').value;
+  const price = +document.getElementById('price').value;
+  const cap   = +document.getElementById('cap').value;
+
+  document.getElementById('pv').textContent = '¥' + price;
+  document.getElementById('cv').textContent = cap.toLocaleString() + '人';
+  document.getElementById('cliff').style.display = price > 300 ? 'block' : 'none';
+
+  // 高亮当前价格区间
+  const zi = getZoneIndex(price);
+  for (let i = 0; i < 6; i++) {
+    document.getElementById('row-' + i).style.background = i === zi ? '#f0f9eb' : '';
+    document.getElementById('row-' + i).style.fontWeight = i === zi ? '600' : '';
+  }
+  const pz = document.getElementById('price-zone');
+  pz.textContent = '当前区间：' + ZONE_LABELS[zi] + '，基准上座率 ' + (getPriceOcc(price) * 100).toFixed(1) + '%';
+  pz.style.color = ZONE_COLORS[zi];
+
+  const occ  = predict(cm, vm, price, cap);
+  const att  = Math.round(cap * occ);
+  const revN = +revWan(cap, occ, price);
+
+  document.getElementById('occ').textContent = (occ * 100).toFixed(1) + '%';
+  document.getElementById('att').textContent = att.toLocaleString();
+  document.getElementById('rev').textContent = '¥' + revN.toFixed(1) + '万';
+  document.getElementById('occ-s').textContent =
+    occ >= 0.70 ? '达到目标上座率（70%）✓' :
+    occ >= 0.65 ? '接近目标，未达70%' : '低于均值，有空座风险';
+
+  const vd = document.getElementById('verdict');
+  if (occ >= 0.70 && revN >= 170) {
+    vd.style.cssText = 'background:#e8f5e9;color:#2e7d32;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:1rem;font-weight:500;';
+    vd.textContent = '✓ 高上座率（≥70%）+ 可观收入（≥¥170万）— 符合目标';
+  } else if (occ >= 0.70 && revN < 170) {
+    vd.style.cssText = 'background:#fff3e0;color:#e65100;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:1rem;font-weight:500;';
+    vd.textContent = '⚠ 上座率达标（≥70%），收入未达¥170万——建议提高票价或扩大容量';
+  } else if (occ < 0.70 && revN >= 170) {
+    vd.style.cssText = 'background:#fff3e0;color:#e65100;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:1rem;font-weight:500;';
+    vd.textContent = '⚠ 收入达标（≥¥170万），但上座率未达70%——空座风险影响口碑';
+  } else {
+    vd.style.cssText = 'background:#ffebee;color:#c62828;padding:10px 14px;border-radius:10px;font-size:13px;margin-bottom:1rem;font-weight:500;';
+    vd.textContent = '✗ 上座率未达70% + 收入未达¥170万——建议换城市或调整场馆/票价';
+  }
+}
+
+['city', 'price', 'cap'].forEach(id =>
+  document.getElementById(id).addEventListener('input', update));
+update();
+</script>
+</body>
+</html>
